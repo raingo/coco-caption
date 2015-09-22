@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 import threading
+import timeout_decorator
 
 # Assumes meteor-1.5.jar is in the same directory as meteor.py.  Change as needed.
 METEOR_JAR = 'meteor-1.5.jar'
@@ -27,7 +28,8 @@ class Meteor:
         # Used to guarantee thread safety
     def _create_server(self):
         self.pid_path = '/tmp/yli-METEOR-pid'
-        self.address = ('localhost', 6000)
+        #self.address = ('localhost', 6000)
+        self.address = '/tmp/yli-METEOR-server'
         self.authkey = 'dummy key'
         try:
             pid = open(self.pid_path).read().strip()
@@ -44,27 +46,60 @@ class Meteor:
             self.pid = self.meteor_p.pid
             open(self.pid_path, 'w').write(str(self.pid))
 
-            self.listener = Listener(self.address, authkey=self.authkey)
 
             if os.fork():
                 # put to background
-                sys.exit(-1)
+                # the main process should call _compute_score to
+                # initialize meteor.jar, which takes longer than 5 seconds
+                return
             else:
+
                 while True:
-                    conn = self.listener.accept()
-                    print 'accept connection'
-                    gts = conn.recv()
-                    res = conn.recv()
-                    score = self._compute_score(gts, res)
-                    conn.send(score)
-                    conn.close()
+                    if os.path.exists(self.address):
+                        os.remove(self.address)
+
+                    listener = Listener(self.address, authkey=self.authkey)
+                    try:
+                        self._handle_listenser(listener)
+                    except:
+                        pass
+                    finally:
+                        listener.close()
+
+    def _handle_listenser(self, listener):
+
+        while True:
+            conn = listener.accept()
+            try:
+                self._handle_conn(conn)
+            except:
+                pass
+            finally:
+                conn.close()
+
+    @timeout_decorator.timeout(5)
+    def _handle_conn(self, conn):
+        print 'accept connection'
+        gts = conn.recv()
+        res = conn.recv()
+        score = self._compute_score(gts, res)
+        conn.send(score)
+
+    @timeout_decorator.timeout(5)
+    def _handle_client(self, gts, res, conn):
+        conn.send(gts)
+        conn.send(res)
+        score = conn.recv()
+        return score
 
     def compute_score(self, gts, res):
-        self.conn = Client(self.address, authkey=self.authkey)
-        self.conn.send(gts)
-        self.conn.send(res)
-        score = self.conn.recv()
-        self.conn.close()
+        conn = Client(self.address, authkey=self.authkey)
+        try:
+            score = self._handle_client(gts, res, conn)
+        except:
+            score = (0.0, [0.0])
+        finally:
+            conn.close()
         return score
 
     def _compute_score(self, gts, res):
