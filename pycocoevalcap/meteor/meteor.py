@@ -61,7 +61,8 @@ class Meteor:
                     listener = Listener(self.address, authkey=self.authkey)
                     try:
                         self._handle_listenser(listener)
-                    except:
+                    except Exception as ioe:
+                        print ioe, '65'
                         pass
                     finally:
                         listener.close()
@@ -72,20 +73,21 @@ class Meteor:
             conn = listener.accept()
             try:
                 self._handle_conn(conn)
-            except:
+            except Exception as ioe:
+                print ioe, '77'
                 pass
             finally:
                 conn.close()
 
-    @timeout_decorator.timeout(5)
+    #@timeout_decorator.timeout(50)
     def _handle_conn(self, conn):
-        print 'accept connection'
+        #print 'accept connection'
         gts = conn.recv()
         res = conn.recv()
         score = self._compute_score(gts, res)
         conn.send(score)
 
-    @timeout_decorator.timeout(5)
+    #@timeout_decorator.timeout(50)
     def _handle_client(self, gts, res, conn):
         conn.send(gts)
         conn.send(res)
@@ -96,7 +98,8 @@ class Meteor:
         conn = Client(self.address, authkey=self.authkey)
         try:
             score = self._handle_client(gts, res, conn)
-        except:
+        except Exception as ioe:
+            print ioe, '103'
             score = (0.0, [0.0])
         finally:
             conn.close()
